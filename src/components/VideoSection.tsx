@@ -2,13 +2,25 @@ import { useVideos, Video } from "@/hooks/useVideos";
 import { useSiteContent } from "@/hooks/useSiteContent";
 
 const getEmbedUrl = (video: Video) => {
-  if (video.video_type === "youtube") {
-    // Extract video ID from various YouTube URL formats
-    const match = video.video_url.match(
+  // Extract video ID from various YouTube URL formats (including Shorts)
+  const extractYouTubeId = (url: string) => {
+    // Match YouTube Shorts URL
+    const shortsMatch = url.match(/youtube\.com\/shorts\/([^"&?\/\s]{11})/);
+    if (shortsMatch) return shortsMatch[1];
+    
+    // Match regular YouTube URL formats
+    const match = url.match(
       /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/
     );
-    if (match) {
-      return `https://www.youtube.com/embed/${match[1]}`;
+    if (match) return match[1];
+    
+    return null;
+  };
+
+  if (video.video_type === "youtube" || video.video_type === "youtube_shorts") {
+    const videoId = extractYouTubeId(video.video_url);
+    if (videoId) {
+      return `https://www.youtube.com/embed/${videoId}`;
     }
     return video.video_url;
   } else if (video.video_type === "tiktok") {
