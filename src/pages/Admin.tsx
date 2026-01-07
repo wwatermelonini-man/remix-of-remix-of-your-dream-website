@@ -11,7 +11,8 @@ import { useVideos, Video } from "@/hooks/useVideos";
 import { usePricing, PricingPackage } from "@/hooks/usePricing";
 import { useSiteSettings, BackgroundSettings } from "@/hooks/useSiteSettings";
 import { useAdminPassword } from "@/hooks/useAdminPassword";
-import { ArrowRight, Plus, Trash2, Edit2, Save, X, Home, Upload, Image as ImageIcon, Check } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { ArrowRight, Plus, Trash2, Edit2, Save, X, Home, Upload, Image as ImageIcon, Check, Search, Loader2 } from "lucide-react";
 import ContentTab from "@/components/admin/ContentTab";
 import ImagesTab from "@/components/admin/ImagesTab";
 import SettingsTab from "@/components/admin/SettingsTab";
@@ -51,6 +52,11 @@ const Admin = () => {
     display_order: 0,
     is_active: true,
   });
+
+  // YouTube search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
   const [newPackage, setNewPackage] = useState({
     name: "",
@@ -123,6 +129,41 @@ const Admin = () => {
     if (success) {
       toast({ title: "הסרטון נמחק בהצלחה!" });
     }
+  };
+
+  const handleSearchYouTube = async () => {
+    if (!searchQuery.trim()) {
+      toast({ title: "נא להזין שם סרטון לחיפוש", variant: "destructive" });
+      return;
+    }
+    setIsSearching(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('youtube-search', {
+        body: { query: searchQuery, maxResults: 6 }
+      });
+      if (error) throw error;
+      setSearchResults(data.videos || []);
+      if (data.videos?.length === 0) {
+        toast({ title: "לא נמצאו סרטונים" });
+      }
+    } catch (error: any) {
+      console.error('Search error:', error);
+      toast({ title: "שגיאה בחיפוש", description: error.message, variant: "destructive" });
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleSelectSearchResult = (result: any, type: "youtube" | "youtube_shorts") => {
+    setNewVideo({
+      ...newVideo,
+      title: result.title,
+      video_url: type === "youtube_shorts" ? result.shortsUrl : result.url,
+      video_type: type,
+    });
+    setSearchResults([]);
+    setSearchQuery("");
+    toast({ title: "סרטון נבחר! לחץ על 'הוסף סרטון' להוספה" });
   };
 
   const handleAddPackage = async () => {
@@ -295,6 +336,64 @@ const Admin = () => {
 
           {/* Videos Tab */}
           <TabsContent value="videos" className="space-y-6">
+            {/* YouTube Search */}
+            <div className="minecraft-card">
+              <h2 className="text-xl font-bold mb-4">🔍 חיפוש סרטון ביוטיוב</h2>
+              <div className="flex gap-2">
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearchYouTube()}
+                  placeholder="הזן שם סרטון לחיפוש..."
+                  className="bg-background/50"
+                />
+                <Button onClick={handleSearchYouTube} disabled={isSearching}>
+                  {isSearching ? (
+                    <Loader2 className="ml-2 animate-spin" size={18} />
+                  ) : (
+                    <Search className="ml-2" size={18} />
+                  )}
+                  חפש
+                </Button>
+              </div>
+              
+              {searchResults.length > 0 && (
+                <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                  {searchResults.map((result) => (
+                    <div key={result.videoId} className="bg-muted/30 rounded-lg overflow-hidden">
+                      <img 
+                        src={result.thumbnail} 
+                        alt={result.title}
+                        className="w-full h-24 object-cover"
+                      />
+                      <div className="p-3">
+                        <p className="font-medium text-sm line-clamp-2 mb-2">{result.title}</p>
+                        <p className="text-xs text-muted-foreground mb-3">{result.channelTitle}</p>
+                        <div className="flex gap-2">
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => handleSelectSearchResult(result, "youtube")}
+                            className="flex-1 text-xs"
+                          >
+                            📺 סרטון
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => handleSelectSearchResult(result, "youtube_shorts")}
+                            className="flex-1 text-xs"
+                          >
+                            🎬 Shorts
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="minecraft-card">
               <h2 className="text-xl font-bold mb-4">הוסף סרטון חדש</h2>
               <div className="grid gap-4 md:grid-cols-2">
@@ -318,7 +417,7 @@ const Admin = () => {
                     onChange={(e) =>
                       setNewVideo((prev) => ({ ...prev, video_url: e.target.value }))
                     }
-                    placeholder="https://youtube.com/..."
+                    placeholder="https://youtube.com/... או https://youtube.com/shorts/..."
                     className="bg-background/50"
                   />
                 </div>
